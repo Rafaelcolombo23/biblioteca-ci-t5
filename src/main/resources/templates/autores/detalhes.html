@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Detalhes do Autor</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; }
+        .card { border: 1px solid #ddd; padding: 16px; max-width: 540px; }
+        .row { margin: 8px 0; }
+        .label { font-weight: bold; }
+        .actions { margin-top: 16px; display: flex; gap: 8px; }
+        a { padding: 8px 12px; border: 1px solid #666; background: #fff; text-decoration: none; color: #111; }
+    </style>
+</head>
+<body>
+<h1>Detalhes do Autor</h1>
+
+<div class="card">
+    <div class="row"><span class="label">ID:</span> <span th:text="${autor.id}"></span></div>
+    <div class="row"><span class="label">Nome:</span> <span th:text="${autor.nome}"></span></div>
+    <div class="row"><span class="label">Nacionalidade:</span> <span th:text="${autor.nacionalidade ?: '-'}"></span></div>
+</div>
+
+<div class="actions">
+    <a th:href="@{/autores/{id}/editar(id=${autor.id})}">Editar</a>
+    <a th:href="@{/autores}">Voltar</a>
+</div>
+</body>
+</html>

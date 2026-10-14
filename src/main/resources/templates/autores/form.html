@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title th:text="${autor.id == null ? 'Novo Autor' : 'Editar Autor'}"></title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; }
+        form { max-width: 500px; display: grid; gap: 12px; }
+        label { display: block; font-weight: bold; margin-bottom: 4px; }
+        input { width: 100%; padding: 8px; box-sizing: border-box; }
+        .error { color: #b00020; font-size: 0.9rem; }
+        .actions { display: flex; gap: 8px; }
+        button, a { padding: 8px 12px; border: 1px solid #666; background: #fff; text-decoration: none; color: #111; }
+    </style>
+</head>
+<body>
+<h1 th:text="${autor.id == null ? 'Novo Autor' : 'Editar Autor'}"></h1>
+
+<form th:action="@{/autores}" th:object="${autor}" method="post">
+    <input type="hidden" th:field="*{id}">
+
+    <div>
+        <label for="nome">Nome</label>
+        <input id="nome" type="text" th:field="*{nome}">
+        <div class="error" th:if="${#fields.hasErrors('nome')}" th:errors="*{nome}"></div>
+    </div>
+
+    <div>
+        <label for="nacionalidade">Nacionalidade</label>
+        <input id="nacionalidade" type="text" th:field="*{nacionalidade}">
+        <div class="error" th:if="${#fields.hasErrors('nacionalidade')}" th:errors="*{nacionalidade}"></div>
+    </div>
+
+    <div class="actions">
+        <button type="submit">Salvar</button>
+        <a th:href="@{/autores}">Cancelar</a>
+    </div>
+</form>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Livros</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f2f2f2; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; }
+        .search { margin-top: 12px; display: flex; gap: 8px; }
+        input[type='text'] { padding: 8px; width: 320px; }
+        a.button, button { padding: 6px 10px; border: 1px solid #666; background: #fff; cursor: pointer; text-decoration: none; color: #111; }
+        .actions { display: flex; gap: 8px; }
+        .pager { margin-top: 16px; display: flex; gap: 8px; align-items: center; }
+        .nav { margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+<div class="nav">
+    <a th:href="@{/livros}">Livros</a> |
+    <a th:href="@{/autores}">Autores</a>
+</div>
+
+<div class="topbar">
+    <h1>Livros</h1>
+    <a class="button" th:href="@{/livros/novo}">Novo livro</a>
+</div>
+
+<form class="search" method="get" th:action="@{/livros}">
+    <input type="text" name="titulo" th:value="${titulo}" placeholder="Buscar por título">
+    <button type="submit">Buscar</button>
+    <a class="button" th:href="@{/livros}">Limpar</a>
+</form>
+
+<table>
+    <thead>
+    <tr>
+        <th>ID</th>
+        <th>Título</th>
+        <th>ISBN</th>
+        <th>Ano</th>
+        <th>Autor</th>
+        <th>Ações</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="livro : ${livros.content}">
+        <td th:text="${livro.id}"></td>
+        <td th:text="${livro.titulo}"></td>
+        <td th:text="${livro.isbn}"></td>
+        <td th:text="${livro.anoPublicacao}"></td>
+        <td th:text="${livro.autor.nome}"></td>
+        <td>
+            <div class="actions">
+                <a class="button" th:href="@{/livros/{id}/editar(id=${livro.id})}">Editar</a>
+                <form th:action="@{/livros/{id}/excluir(id=${livro.id})}" method="post">
+                    <button type="submit" onclick="return confirm('Excluir este livro?')">Excluir</button>
+                </form>
+            </div>
+        </td>
+    </tr>
+    <tr th:if="${livros.empty}">
+        <td colspan="6">Nenhum livro encontrado.</td>
+    </tr>
+    </tbody>
+</table>
+
+<div class="pager" th:if="${livros.totalPages > 0}">
+    <a class="button"
+       th:if="${!livros.first}"
+       th:href="@{/livros(pagina=${livros.number - 1}, tamanho=${livros.size}, titulo=${titulo})}">Anterior</a>
+
+    <span th:text="'Página ' + (${livros.number + 1}) + ' de ' + ${livros.totalPages}"></span>
+
+    <a class="button"
+       th:if="${!livros.last}"
+       th:href="@{/livros(pagina=${livros.number + 1}, tamanho=${livros.size}, titulo=${titulo})}">Próxima</a>
+</div>
+</body>
+</html>

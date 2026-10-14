@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Autores</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f2f2f2; }
+        .actions { display: flex; gap: 8px; }
+        a.button, button { padding: 6px 10px; border: 1px solid #666; background: #fff; cursor: pointer; text-decoration: none; color: #111; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; }
+        .nav { margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+<div class="nav">
+    <a th:href="@{/livros}">Livros</a> |
+    <a th:href="@{/autores}">Autores</a>
+</div>
+<div class="topbar">
+    <h1>Autores</h1>
+    <a class="button" th:href="@{/autores/novo}">Novo autor</a>
+</div>
+
+<p th:if="${erro == 'autor-em-uso'}" style="color:#b00020;">
+    Não foi possível excluir: o autor possui livros vinculados.
+</p>
+
+<table>
+    <thead>
+    <tr>
+        <th>ID</th>
+        <th>Nome</th>
+        <th>Nacionalidade</th>
+        <th>Ações</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="autor : ${autores}">
+        <td th:text="${autor.id}"></td>
+        <td th:text="${autor.nome}"></td>
+        <td th:text="${autor.nacionalidade}"></td>
+        <td>
+            <div class="actions">
+                <a class="button" th:href="@{/autores/{id}(id=${autor.id})}">Detalhes</a>
+                <a class="button" th:href="@{/autores/{id}/editar(id=${autor.id})}">Editar</a>
+                <form th:action="@{/autores/{id}/excluir(id=${autor.id})}" method="post">
+                    <button type="submit" onclick="return confirm('Excluir este autor?')">Excluir</button>
+                </form>
+            </div>
+        </td>
+    </tr>
+    </tbody>
+</table>
+</body>
+</html>

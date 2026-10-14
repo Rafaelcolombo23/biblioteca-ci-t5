@@ -1,0 +1,165 @@
+name: Biblioteca CI — T5
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: biblioteca-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ci:
+    name: Build, testes, segurança e smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      CI_EVIDENCE_DIR: ci-evidence
+    steps:
+      - name: Obter o código do evento
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Em pull_request, github.sha identifica o merge sintético com main.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Preparar evidências
+        run: mkdir -p "$CI_EVIDENCE_DIR"
+
+      - name: Configurar Java 21 e cache Maven
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21.0.10+7'
+          cache: maven
+          cache-dependency-path: |
+            pom.xml
+            .mvn/wrapper/maven-wrapper.properties
+
+      - name: Validar entrada e registrar versões
+        id: validate
+        run: |
+          set -euo pipefail
+          test -x mvnw
+          test -s pom.xml
+          test -s .mvn/wrapper/maven-wrapper.properties
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          {
+            printf 'commit=%s\npr_head=%s\nevento=%s\n' "$GITHUB_SHA" "$PR_HEAD_SHA" "$GITHUB_EVENT_NAME"
+            java -version
+            ./mvnw --version
+          } 2>&1 | tee "$CI_EVIDENCE_DIR/versions.log"
+          ./mvnw --batch-mode --no-transfer-progress validate 2>&1 | tee "$CI_EVIDENCE_DIR/validate.log"
+
+      - name: Compilar a partir de saída limpa
+        id: build
+        run: |
+          set -euo pipefail
+          ./mvnw --batch-mode --no-transfer-progress clean compile 2>&1 | tee "$CI_EVIDENCE_DIR/build.log"
+
+      - name: Executar testes bloqueantes e verificar pacote
+        id: tests
+        run: |
+          set -euo pipefail
+          # O ciclo verify executa testes antes de produzir o JAR base.
+          ./mvnw --batch-mode --no-transfer-progress -DfailIfNoTests=true verify 2>&1 | tee "$CI_EVIDENCE_DIR/tests.log"
+
+      - name: Detectar segredos com Gitleaks
+        id: security
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_VERSION: '8.24.3'
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+          GITLEAKS_ENABLE_SUMMARY: 'false'
+
+      - name: Identificar artefato e gerar manifesto
+        id: package
+        run: |
+          set -euo pipefail
+          python3 scripts/prepare-artifact.py
+
+      - name: Publicar artefato identificado pelo commit
+        id: artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: biblioteca-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Implantar temporariamente e testar a aplicação
+        id: smoke
+        run: |
+          set -euo pipefail
+          bash scripts/smoke-test.sh "dist/biblioteca-${GITHUB_SHA}.jar" "$CI_EVIDENCE_DIR" 2>&1 | tee "$CI_EVIDENCE_DIR/smoke.log"
+
+      - name: Reunir evidências mesmo após falha
+        if: always()
+        env:
+          VALIDATE_STATUS: ${{ steps.validate.outcome }}
+          BUILD_STATUS: ${{ steps.build.outcome }}
+          TESTS_STATUS: ${{ steps.tests.outcome }}
+          SECURITY_STATUS: ${{ steps.security.outcome }}
+          PACKAGE_STATUS: ${{ steps.package.outcome }}
+          ARTIFACT_STATUS: ${{ steps.artifact.outcome }}
+          SMOKE_STATUS: ${{ steps.smoke.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CI_EVIDENCE_DIR"
+          if [ -d target/surefire-reports ]; then
+            cp -R target/surefire-reports "$CI_EVIDENCE_DIR/"
+          fi
+          if [ -f results.sarif ]; then
+            cp results.sarif "$CI_EVIDENCE_DIR/gitleaks.sarif"
+          fi
+          if [ -f dist/MANIFEST.txt ]; then
+            cp dist/MANIFEST.txt dist/SHA256SUMS "$CI_EVIDENCE_DIR/"
+          fi
+          {
+            printf 'commit=%s\npr_head=%s\nevento=%s\n' "$GITHUB_SHA" "$PR_HEAD_SHA" "$GITHUB_EVENT_NAME"
+            printf 'execucao=%s/%s/actions/runs/%s\ntentativa=%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            printf 'validacao=%s\nbuild=%s\ntestes=%s\nseguranca=%s\npacote=%s\npublicacao=%s\nsmoke=%s\n' "$VALIDATE_STATUS" "$BUILD_STATUS" "$TESTS_STATUS" "$SECURITY_STATUS" "$PACKAGE_STATUS" "$ARTIFACT_STATUS" "$SMOKE_STATUS"
+          } > "$CI_EVIDENCE_DIR/execution.txt"
+
+      - name: Publicar logs e relatórios mesmo após falha
+        id: evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evidencias-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Mostrar resultado e critério de promoção
+        if: always()
+        env:
+          PIPELINE_STATUS: ${{ job.status }}
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+          EVIDENCE_URL: ${{ steps.evidence.outputs.artifact-url }}
+        run: |
+          {
+            printf '## Biblioteca — Trabalho 5\n\n'
+            printf -- '- Resultado: **%s**\n' "$PIPELINE_STATUS"
+            printf -- '- Commit executado: `%s`\n' "$GITHUB_SHA"
+            printf -- '- Head do PR (quando aplicável): `%s`\n' "$PR_HEAD_SHA"
+            printf -- '- Evento: `%s`\n' "$GITHUB_EVENT_NAME"
+            printf -- '- [Execução %s, tentativa %s](%s/%s/actions/runs/%s)\n' "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            if [ -n "$ARTIFACT_URL" ]; then printf -- '- [JAR e manifesto](%s)\n' "$ARTIFACT_URL"; fi
+            if [ -n "$EVIDENCE_URL" ]; then printf -- '- [Logs e relatórios](%s)\n' "$EVIDENCE_URL"; fi
+            printf '\nPromoção: somente após o job completo passar, revisão humana das evidências e aprovação da equipe. O artefato publicado antes do smoke só pode ser promovido se o smoke também passar. Não há deploy em produção.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
