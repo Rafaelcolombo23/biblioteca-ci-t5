@@ -1,0 +1,2 @@
+GET /livros -> HTTP 200
+Smoke aprovado: HTTP 200 e conteúdo esperado da página de livros.

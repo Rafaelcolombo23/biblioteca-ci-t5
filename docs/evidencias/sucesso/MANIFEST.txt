@@ -1,0 +1,20 @@
+artifact=biblioteca-7294b5e109278c74c9b65a91a63d54b5c29102a4.jar
+sha256=aa5ee28295c733bb03fa601a72f63b1ab899041e6b7dc554082d1c80939ae89b
+commit=7294b5e109278c74c9b65a91a63d54b5c29102a4
+pr_head=
+event=push
+run=https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions/runs/38650549205
+attempt=1
+promotion=Requer CI completo aprovado, smoke aprovado e revisão humana.
+
+Java:
+openjdk version "21.0.10" 2026-01-20 LTS
+OpenJDK Runtime Environment Temurin-21.0.10+7 (build 21.0.10+7-LTS)
+OpenJDK 64-Bit Server VM Temurin-21.0.10+7 (build 21.0.10+7-LTS, mixed mode, sharing)
+
+Maven:
+Apache Maven 3.9.15 (98b2cdbfdb5f1ac8781f537ea9acccaed7922349)
+Maven home: /home/runner/.m2/wrapper/dists/apache-maven-3.9.15/9925cc1d
+Java version: 21.0.10, vendor: Eclipse Adoptium, runtime: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.10-7.0.LTS/x64
+Default locale: en, platform encoding: UTF-8
+OS name: "linux", version: "6.17.0-1022-azure", arch: "amd64", family: "unix"

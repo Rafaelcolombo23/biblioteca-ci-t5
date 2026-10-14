@@ -1,0 +1,12 @@
+commit=595a9e4c288ee9d9054b2f270ef1d7a75ebe6399
+pr_head=
+evento=push
+execucao=https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions/runs/38650134855
+tentativa=1
+validacao=success
+build=success
+testes=failure
+seguranca=skipped
+pacote=skipped
+publicacao=skipped
+smoke=skipped
