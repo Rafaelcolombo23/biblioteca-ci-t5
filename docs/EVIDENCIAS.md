@@ -1,6 +1,6 @@
-# Evidências de execução — Trabalho 5
+# Resultados e evidências de execução
 
-Este arquivo registra resultados observados e links verificáveis. **Falha real detectada pelo CI, corrigida e seguida de execução completa com sucesso no GitHub Actions.** As duas execuções e seus relatórios estão preservados abaixo.
+Validamos o pipeline em duas situações: uma execução que detectou um defeito no cadastro após a carga inicial e outra que aprovou a aplicação após a correção. Preservamos os resultados, os commits e os relatórios para relacionar cada comportamento à versão testada.
 
 Repositório: [Rafaelcolombo23/biblioteca-ci-t5](https://github.com/Rafaelcolombo23/biblioteca-ci-t5).
 
@@ -26,7 +26,7 @@ Configuração: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 | Manifesto e checksum | [`MANIFEST.txt`](evidencias/sucesso/MANIFEST.txt) e [`SHA256SUMS`](evidencias/sucesso/SHA256SUMS), preservados do pacote da execução. |
 | SHA-256 registrado do JAR | `aa5ee28295c733bb03fa601a72f63b1ab899041e6b7dc554082d1c80939ae89b`. |
 
-Build, testes, segurança, publicação e smoke foram conferidos e estão aprovados. O manifesto identifica Java Temurin 21.0.10+7, Maven 3.9.15, commit, evento e URL da execução. A publicação de um artefato, isoladamente, não comprova o sucesso do job inteiro; nesta execução, o smoke posterior à publicação também passou.
+A execução concluiu build, testes, segurança, publicação e smoke com sucesso. O manifesto registra Java Temurin 21.0.10+7, Maven 3.9.15, commit, evento e URL da execução. Confirmamos também o funcionamento do JAR pelo teste HTTP realizado após a publicação.
 
 ## 2. Falha real detectada: cadastro após carga inicial
 
@@ -48,25 +48,25 @@ Build, testes, segurança, publicação e smoke foram conferidos e estão aprova
 | Correção aplicada | `data.sql` deixou de fornecer IDs explícitos nos inserts; H2 gera os IDs dos autores/livros, e os livros obtêm `autor_id` por subconsulta ao nome do autor. O teste de regressão permanece no projeto. |
 | Execução posterior à correção | [38650549205](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions/runs/38650549205), com oito testes e todas as etapas aprovados, conforme seção 1. |
 
-O CI executou o teste de regressão com a carga inicial anterior à correção e interrompeu as etapas dependentes ao detectar a colisão de IDs. A correção foi aplicada em seguida e validada localmente e no CI com o mesmo teste. Os arquivos de texto acima preservam o resultado da falha mesmo após o vencimento do download do artefato do Actions.
+O teste de regressão revelou a colisão de IDs e interrompeu o fluxo antes da publicação do JAR. Corrigimos a carga inicial para utilizar os identificadores gerados pelo H2 e validamos a alteração localmente e no CI, mantendo o mesmo teste. Os relatórios preservados registram o diagnóstico e o resultado da correção.
 
-### Reproduzir a falha sem alterar a `main`
+### Reprodução da falha e da correção
 
-Use um checkout limpo: execute `git status --short` e prossiga somente se não houver saída. Se houver alterações locais, preserve-as antes de trocar a revisão. No Linux/macOS:
+A reprodução utiliza JDK 21 e um checkout sem alterações locais, verificável com `git status --short`. O commit anterior à correção é selecionado em modo destacado, preservando a referência da branch `main`:
 
 ```sh
 git switch --detach 595a9e4c288ee9d9054b2f270ef1d7a75ebe6399
 ./mvnw --batch-mode --no-transfer-progress -DfailIfNoTests=true clean verify
 ```
 
-O resultado esperado é `BUILD FAILURE`, com erro de chave duplicada no teste de cadastro após carga inicial. A referência destacada permite inspecionar o commit antigo sem mover a branch `main`. Depois da falha esperada, volte à versão corrigida e repita:
+Nesse commit, o resultado é `BUILD FAILURE`, com erro de chave duplicada no teste de cadastro após carga inicial. A execução da versão corrigida utiliza:
 
 ```sh
 git switch main
 ./mvnw --batch-mode --no-transfer-progress -DfailIfNoTests=true clean verify
 ```
 
-O resultado esperado na versão corrigida é `BUILD SUCCESS`, com oito testes aprovados. No Windows/PowerShell, substitua `./mvnw` por `.\mvnw.cmd`; os comandos Git são os mesmos.
+Na versão corrigida, o resultado é `BUILD SUCCESS`, com oito testes aprovados. O comando equivalente no Windows/PowerShell utiliza `.\mvnw.cmd` no lugar de `./mvnw`.
 
 ## 3. Verificação local
 
@@ -80,27 +80,8 @@ O resultado esperado na versão corrigida é `BUILD SUCCESS`, com oito testes ap
 | Contagem de testes | Oito executados, zero falhas, zero erros e zero ignorados. |
 | Smoke local | O próprio JAR iniciou e respondeu HTTP `200` em `/livros`, com o conteúdo esperado. Processo encerrado pelo script. Este resultado local é separado da execução no GitHub Actions. |
 
-## 4. Acesso e conservação das evidências
+## 4. Preservação dos registros
 
-1. Abrir a URL da execução e conferir SHA, referência, evento e status.
-2. Conferir o primeiro passo com erro na execução vermelha e os passos seguintes ignorados.
-3. Abrir os logs ou baixar o artefato `evidencias-<SHA>-<run_id>-<run_attempt>`.
-4. Na execução verde, baixar `biblioteca-<SHA>` e conferir JAR, manifesto e checksum.
-5. Guardar os downloads antes de completarem os **30 dias** de retenção configurados.
+Preservamos os relatórios de testes, os estados das etapas, o resultado HTTP, o manifesto, o checksum e o relatório SARIF em `docs/evidencias/`. Esses arquivos mantêm o histórico técnico das execuções além dos 30 dias de retenção configurados para os artefatos do GitHub Actions.
 
-Os relatórios de texto, estados das etapas, resultado HTTP, manifesto, checksum e SARIF selecionados foram copiados para `docs/evidencias/`. Essas cópias permanecem no repositório após a expiração dos artefatos do Actions. O JAR completo e os logs extensos são disponibilizados nos artefatos da execução.
-
-O repositório público permite consultar código e páginas de execução. O download de artefatos do GitHub Actions pode exigir uma conta autenticada. Não publicar dados pessoais, credenciais ou logs sensíveis como material de entrega.
-
-## 5. Critério para considerar a entrega comprovada
-
-- [x] Repositório criado com visibilidade pública.
-- [x] URL de uma execução completa com sucesso registrada.
-- [x] SHA testado e artefato correspondente registrados.
-- [x] Relatórios e resultado HTTP conferidos.
-- [x] URL da execução com falha real registrada.
-- [x] Relatório da falha e interrupção das etapas seguintes conferidos.
-- [x] Correção na `main` comprovada com o teste de regressão mantido.
-- [x] Download da execução com falha preservado; resumo e relatório versionados.
-- [x] Download da execução bem-sucedida preservado para a apresentação.
-- [x] Checklist do Slide 67 atualizado com resultados observados.
+O repositório público reúne o código, a documentação e os relatórios selecionados. O JAR e os logs completos foram publicados nos artefatos das respectivas execuções. Os links e os SHAs registrados estabelecem a relação entre o defeito identificado, a alteração em `data.sql` e a versão aprovada.

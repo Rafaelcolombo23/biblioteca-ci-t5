@@ -1,22 +1,28 @@
-# Biblioteca — Trabalho 5
+# Biblioteca — Integração Contínua
 
 [![Pipeline CI](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions/workflows/ci.yml/badge.svg)](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions/workflows/ci.yml)
 
-Aplicação de biblioteca com cadastro de autores e livros, preparada para o trabalho **Pipeline CI mínimo e reprodutível**. O projeto usa Java 21, Spring Boot 4.0.6, Maven 3.9.15 pelo Maven Wrapper, Spring Data JPA, Thymeleaf e H2 em memória.
+Desenvolvemos uma aplicação de biblioteca para gerenciar autores e livros e automatizamos seu processo de integração contínua com GitHub Actions. Nosso objetivo foi reunir compilação, testes, segurança e publicação em um fluxo reproduzível, com identificação de cada versão e registros dos resultados.
 
-| Integrantes informados | RA |
+| Integrantes | RA |
 | --- | --- |
 | Rafael Colombo da Silva | 14551 |
 | Ryan Alexandre da Costa | 14647 |
 
-- [Documentação do trabalho, na ordem dos slides 57–67](docs/TRABALHO-5.md)
-- [Evidências de sucesso e de falha detectada](docs/EVIDENCIAS.md)
+- [Relatório do projeto](docs/TRABALHO-5.md)
+- [Resultados e evidências de execução](docs/EVIDENCIAS.md)
 - [Definição do pipeline](.github/workflows/ci.yml)
 - [Execuções no GitHub Actions](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions)
 
-## Executar a aplicação
+## Tecnologias
 
-Pré-requisitos: Git, JDK 21 e acesso à internet na primeira execução para baixar o Maven e as dependências. Não é necessário instalar o Maven separadamente. Confira `java -version` e configure `JAVA_HOME` para o JDK 21.
+Utilizamos Java 21, Spring Boot 4.0.6, Spring Data JPA, Thymeleaf e H2 em memória. O Maven Wrapper fixa a versão 3.9.15 do Maven, e o ambiente de CI utiliza Ubuntu 24.04 com Java Temurin 21.0.10.
+
+A aplicação permite cadastrar, consultar, editar e excluir autores e livros, buscar livros por título e navegar pelo catálogo com paginação. Os dados iniciais incluem três autores e cinco livros. O banco é recriado a cada inicialização; a configuração adotada atende ao ambiente de desenvolvimento e aos testes.
+
+## Execução local
+
+A execução requer Git, JDK 21 com `JAVA_HOME` configurado e acesso à internet para o primeiro download das dependências. O Maven é obtido pelo próprio Wrapper.
 
 ```sh
 git clone https://github.com/Rafaelcolombo23/biblioteca-ci-t5.git
@@ -29,17 +35,15 @@ Linux/macOS:
 ./mvnw spring-boot:run
 ```
 
-Windows, no PowerShell:
+Windows/PowerShell:
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-Acesse [http://localhost:8080](http://localhost:8080). As telas de autores e livros estão em `/autores` e `/livros`. Encerre com `Ctrl+C`.
+A aplicação fica disponível em [localhost:8080](http://localhost:8080), com as páginas `/autores` e `/livros`. O console local do H2 fica em `/h2-console`, com URL `jdbc:h2:mem:biblioteca`, usuário `sa` e senha vazia. O encerramento do processo é feito com `Ctrl+C`.
 
-O H2 é um banco **efêmero**: os dados são recriados ao iniciar e não persistem após encerrar a aplicação. O console H2 em `/h2-console` é destinado ao estudo local. A configuração usa usuário `sa`, senha vazia e URL `jdbc:h2:mem:biblioteca`; não se trata de uma credencial de serviço externo. O projeto não está configurado para operação em produção.
-
-## Reproduzir build e testes
+## Build e testes
 
 Linux/macOS:
 
@@ -48,30 +52,28 @@ Linux/macOS:
 java -jar target/biblioteca-0.0.1-SNAPSHOT.jar
 ```
 
-Windows, no PowerShell:
+Windows/PowerShell:
 
 ```powershell
 .\mvnw.cmd --batch-mode --no-transfer-progress -DfailIfNoTests=true clean verify
 java -jar target/biblioteca-0.0.1-SNAPSHOT.jar
 ```
 
-O comando `clean verify` remove os resultados anteriores, compila, executa os testes e empacota o JAR. A opção `-DfailIfNoTests=true` também impede aprovação sem testes encontrados. Qualquer erro retorna código diferente de zero. Os relatórios ficam em `target/surefire-reports/`. O JAR local é `target/biblioteca-0.0.1-SNAPSHOT.jar`.
+O comando remove a saída anterior, compila a aplicação, executa os testes e gera o JAR. A opção `-DfailIfNoTests=true` impede aprovação sem testes encontrados. Os relatórios ficam em `target/surefire-reports/`.
 
-Os oito testes de integração cobrem carga inicial e relações entre autores/livros, busca por título, paginação, cadastro após a carga inicial, ISBN único, proteção contra exclusão de autor com livros e entidades inexistentes. A evidência de falha usa um defeito real da carga inicial: IDs explícitos podiam colidir com novos IDs gerados pelo H2. A execução antes e depois da correção deve ser consultada em [EVIDENCIAS.md](docs/EVIDENCIAS.md).
+Implementamos oito testes de integração para carga inicial, relacionamento entre autores e livros, busca por título, paginação, cadastro após a carga inicial, ISBN único, integridade referencial e consulta de entidades inexistentes. Durante a validação, identificamos e corrigimos uma colisão de IDs no H2. As execuções anteriores e posteriores à correção estão registradas em [Resultados e evidências](docs/EVIDENCIAS.md).
 
-Para executar o smoke HTTP local no Linux/macOS, com Bash e `curl` disponíveis:
+O teste HTTP do JAR é executado com Bash e `curl`:
 
 ```sh
 bash scripts/smoke-test.sh target/biblioteca-0.0.1-SNAPSHOT.jar
 ```
 
-O script inicia e encerra o processo, usa a porta 8080 e grava resultados em `ci-evidence/`. Se a porta estiver ocupada, execute `SMOKE_PORT=8081 bash scripts/smoke-test.sh target/biblioteca-0.0.1-SNAPSHOT.jar`. No Windows, use Git Bash/WSL para o script ou faça a verificação manual após iniciar o JAR no PowerShell.
+O script inicia a aplicação, verifica a página de livros e encerra o processo, registrando os resultados em `ci-evidence/`. A porta padrão é 8080 e pode ser alterada com `SMOKE_PORT=8081`. No Windows, o script utiliza Git Bash ou WSL.
 
-Esses comandos reproduzem o build e os testes Java. Para reproduzir também as verificações e os artefatos específicos da integração contínua, use **Actions → Biblioteca CI — T5 → Run workflow** no GitHub e selecione a referência desejada. O arquivo do workflow é a fonte de verdade para comandos, versões e caminhos.
+## Pipeline
 
-## Como o pipeline funciona
-
-O GitHub Actions inicia em `push` na `main`, em `pull_request` para `main` e por execução manual (`workflow_dispatch`). O job usa Ubuntu 24.04, Java Temurin 21.0.10 e o Maven Wrapper 3.9.15. O cache de dependências acelera downloads; o build executa `clean` para reconstruir a saída.
+Definimos três gatilhos: `push` na `main`, `pull_request` com destino à `main` e acionamento manual por `workflow_dispatch`. O fluxo completo também pode ser iniciado em **Actions → Biblioteca CI — T5 → Run workflow**.
 
 ```mermaid
 flowchart LR
@@ -86,40 +88,31 @@ flowchart LR
   I --> J[Revisão humana para promoção]
 ```
 
-O teste HTTP inicia o próprio JAR no executor com H2 em memória e console desabilitado, aguarda até 90 segundos, verifica HTTP 200 e os textos `Livros` e `Novo livro` em `/livros`, e encerra o processo. Não há deploy de produção. A aprovação exige o job inteiro concluído com sucesso: um arquivo já publicado não significa que o teste HTTP passou.
+O build parte de uma saída limpa e utiliza cache apenas para dependências. Uma falha interrompe as etapas seguintes, enquanto a coleta dos registros permanece habilitada. Em pull requests, o checkout usa o commit de integração gerado pelo GitHub, cujo SHA é registrado nos metadados da execução.
 
-O artefato `biblioteca-<SHA completo do commit>` contém `biblioteca-<SHA>.jar`, `MANIFEST.txt` e `SHA256SUMS`. Logs, relatórios dos testes, verificação de segredos e resultado do smoke ficam no artefato `evidencias-<SHA>-<run_id>-<run_attempt>`. A retenção configurada é de 30 dias; baixe as evidências para a entrega antes de expirarem.
+O teste HTTP inicia o próprio JAR com H2 em memória e console desabilitado, aguarda até 90 segundos e verifica HTTP 200 e os textos `Livros` e `Novo livro` em `/livros`. Definimos a conclusão de todas as etapas e a revisão humana das evidências como condições para promoção. O ambiente implantado pelo pipeline é temporário e não inclui produção.
 
-Em um pull request, o checkout padrão testa o commit de integração gerado pelo GitHub. Seu SHA pode ser diferente do último commit da branch. Relacione o artefato ao SHA efetivamente testado, registrado na execução, e consulte o pull request para identificar a branch de origem.
+## Artefatos e rastreabilidade
 
-## Investigar uma falha
+O pacote `biblioteca-<SHA completo do commit>` contém o JAR, `MANIFEST.txt` e `SHA256SUMS`. O pacote `evidencias-<SHA>-<run_id>-<run_attempt>` reúne logs, relatórios dos testes, resultado do scanner e teste HTTP.
 
-1. Abra [Actions](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions), selecione a execução e confira evento, referência e commit.
-2. Abra o primeiro passo com erro; passos seguintes normalmente ficam ignorados para impedir a continuidade do fluxo.
-3. Baixe o artefato `evidencias-…` e leia os logs e relatórios disponíveis. Falhas anteriores à geração de um relatório podem deixar esse arquivo ausente.
-4. Para falha de teste, leia `target/surefire-reports/` e execute novamente `./mvnw --batch-mode --no-transfer-progress -DfailIfNoTests=true clean verify` no mesmo commit; no Windows, use `.\mvnw.cmd`.
-5. Corrija a causa e envie um novo commit. Consulte [EVIDENCIAS.md](docs/EVIDENCIAS.md) para o registro do defeito detectado e da correção.
+Os artefatos do Actions têm retenção de 30 dias. Preservamos os relatórios selecionados em `docs/evidencias/`, mantendo o registro da falha e da execução bem-sucedida no histórico do repositório. A investigação de falhas utiliza o primeiro passo com erro, os relatórios Surefire e a associação entre execução e commit. Essa rastreabilidade permitiu localizar a causa da colisão de IDs e verificar sua correção com o mesmo teste de regressão.
 
-Uma falha de autenticação, download ou publicação também deve ser investigada pelo log da etapa correspondente. A coleta final de evidências é configurada para ocorrer mesmo após uma falha anterior; indisponibilidade do próprio GitHub ou interrupção do executor pode impedir o upload.
+## Segurança
 
-## Segredos e segurança básica
+Adotamos `contents: read` para o `GITHUB_TOKEN`, ações fixadas por commit e detecção de segredos com Gitleaks e valores sensíveis ocultados nos relatórios. O build e os testes utilizam H2 em memória e não dependem de credenciais externas. Arquivos locais de configuração sensível estão excluídos pelo `.gitignore`.
 
-O build, os testes e o H2 em memória não precisam de segredos externos. O workflow solicita somente `contents: read` para o `GITHUB_TOKEN`, usa ações referenciadas por commit e executa detecção de segredos com saída redigida. Não há credencial de produção nem chave de deploy no projeto.
+A verificação de segredos complementa os testes e a revisão do código. A implementação atual não inclui análise de vulnerabilidades das dependências nem medição de cobertura; essas verificações permanecem como possibilidades de evolução do projeto.
 
-Não coloque tokens, senhas reais, chaves privadas ou arquivos `.env` no repositório nem em comandos que os imprimam. Se uma integração futura precisar de credenciais, use **Settings → Secrets and variables → Actions**, com permissões mínimas. Um segredo publicado deve ser revogado e substituído; apagar a linha não remove a exposição do histórico.
-
-A verificação de segredos é uma camada básica e não substitui revisão de código, análise de vulnerabilidades das dependências ou testes de segurança. Consulte os riscos e as limitações na documentação do trabalho.
-
-## Organização e entrega
+## Estrutura do projeto
 
 ```text
-.github/workflows/ci.yml  Definição executável do CI
-.mvn/wrapper/            Versão do Maven usada pelo Wrapper
+.github/workflows/ci.yml  Pipeline de integração contínua
+.mvn/wrapper/            Configuração do Maven Wrapper
 src/main/                Aplicação Biblioteca
-src/test/                Testes automatizados
-scripts/                 Identificação do pacote e smoke HTTP
-docs/TRABALHO-5.md       Atividade e documentação dos slides 57–67
-docs/EVIDENCIAS.md       Registro verificável de sucesso e falha
+src/test/                Testes de integração
+scripts/                 Identificação do pacote e teste HTTP
+docs/TRABALHO-5.md       Relatório técnico do projeto
+docs/EVIDENCIAS.md       Resultados das execuções
+docs/evidencias/         Relatórios preservados
 ```
-
-Os dois integrantes informados estão identificados acima; a organização da equipe deve seguir a orientação do professor. Identificação da turma e data exata da Aula 10 ainda devem ser preenchidas. A disponibilidade real das execuções e das evidências está registrada em [EVIDENCIAS.md](docs/EVIDENCIAS.md); a descrição de uma etapa não comprova que ela já foi executada.

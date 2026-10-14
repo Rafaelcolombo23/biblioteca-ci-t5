@@ -1,309 +1,139 @@
-# Trabalho 5 — Biblioteca
+# Trabalho 5 — Integração contínua da Biblioteca
 
-**Tema:** Pipeline CI mínimo e reprodutível.
+| Integrantes | RA |
+| --- | --- |
+| Rafael Colombo da Silva | 14551 |
+| Ryan Alexandre da Costa | 14647 |
 
 **Repositório:** [Rafaelcolombo23/biblioteca-ci-t5](https://github.com/Rafaelcolombo23/biblioteca-ci-t5).
 
-**Ferramenta:** GitHub Actions.
+## Contexto e objetivo
 
-**Integrantes informados:** Rafael Colombo da Silva — RA 14551; Ryan Alexandre da Costa — RA 14647.
+Neste trabalho, estruturamos um fluxo de integração contínua para a aplicação Biblioteca, que permite cadastrar, consultar, atualizar e excluir autores e livros. Nosso objetivo foi tornar a construção da aplicação repetível a partir do repositório, detectar falhas antes da seleção de uma versão e manter a relação entre código, testes, pacote gerado e resultado da execução.
 
-**Turma e professor:** a preencher pela equipe.
+A solução trata três problemas associados a processos manuais: diferenças entre ambientes de desenvolvimento, descoberta tardia de defeitos e dificuldade para identificar qual versão foi testada. Adotamos o GitHub Actions para automatizar a validação, a compilação, os testes, a detecção de segredos, a publicação do pacote e sua inicialização em um ambiente temporário.
 
-**Entrega:** Aula 10, após a semana da Jornada Acadêmica; data a confirmar com o professor.
+A Biblioteca utiliza Java 21, Spring Boot 4.0.6, Spring Data JPA, Thymeleaf e H2 em memória. Fixamos o Maven 3.9.15 pelo Maven Wrapper. No CI, o job executa em Ubuntu 24.04 com Java Temurin 21.0.10. O produto gerado é um JAR executável identificado pelo SHA completo do commit, acompanhado de manifesto e checksum SHA-256.
 
-Este documento segue a ordem e os títulos dos slides 57–67. As decisões técnicas descrevem o fluxo definido para a Biblioteca. A comprovação de execução, incluindo links, resultados e commits, deve ser consultada em [EVIDENCIAS.md](EVIDENCIAS.md). Campos ainda pendentes não representam uma execução realizada.
+## Organização do pipeline
 
----
+Definimos três formas de início: `push` na branch `main`, `pull_request` com destino à `main` e acionamento manual por `workflow_dispatch`. A configuração está versionada em [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), junto ao código que ela verifica.
 
-## Slide 57: Atividade Prática — Contexto
+O checkout usa a revisão associada ao evento e confirma que o `HEAD` corresponde ao SHA esperado. Nos pull requests, essa revisão é o commit de integração gerado pelo GitHub. O manifesto registra também o SHA da branch de origem, permitindo distinguir o código proposto da revisão efetivamente testada.
 
-- **Equipes:** o enunciado propõe 3–5 alunos. Os integrantes informados são Rafael Colombo da Silva (RA 14551) e Ryan Alexandre da Costa (RA 14647); organização final conforme orientação do professor.
-- **Tempo sugerido:** 35–45 minutos.
-- **Produto:** Aplicação Biblioteca, com cadastro, consulta, atualização e exclusão de autores e livros.
-- **Tecnologias:** Java 21, Spring Boot 4.0.6, Maven Wrapper com Maven 3.9.15, Thymeleaf, Spring Data JPA e banco H2 em memória.
-- **Situação apresentada na atividade:** builds manuais; erros descobertos durante o deploy; ausência de evidência única de testes; nomes inconsistentes para imagens.
-- **Objetivo:** modelar e implementar um fluxo automatizado e verificável, capaz de reconstruir a aplicação a partir do repositório e interromper a execução quando uma validação falhar.
-- **Aplicação ao projeto:** o produto desta entrega é um JAR executável. Sua identificação usa o SHA completo do commit testado, acompanhado de manifesto e checksum. A construção de imagem de contêiner não faz parte desta implementação.
-
-## Slide 58: Atividade Prática — Desenhar o Pipeline
-
-| Nº | Etapa definida | Dependência e decisão para a Biblioteca |
-| --- | --- | --- |
-| 1 | Gatilho | `push` na `main`, `pull_request` com destino à `main` ou `workflow_dispatch`. |
-| 2 | Checkout | Obter a revisão associada ao evento e registrar sua identidade. Em PR, testar o commit de integração gerado pelo GitHub. |
-| 3 | Validação inicial | Preparar Java 21 e conferir Wrapper, estrutura e versões necessárias. |
-| 4 | Build | Executar compilação a partir da saída limpa com Maven. |
-| 5 | Testes | Executar `verify`, que roda os testes JUnit e só gera o JAR base após aprovação; produzir relatórios Surefire. |
-| 6 | Verificação de qualidade e segurança | Exigir compilação/testes válidos e executar Gitleaks para detectar possíveis segredos. Não há gate de cobertura nem scanner de vulnerabilidades das dependências. |
-| 7 | Artefato produzido | Identificar o JAR já verificado com SHA completo e gerar manifesto de origem e checksum SHA-256. |
-| 8 | Publicação | Publicar o pacote identificado por SHA como artefato do GitHub Actions. |
-| 9 | Deploy de teste | Iniciar o JAR temporariamente no executor, testar HTTP em `/livros` e encerrar o processo. |
-| 10 | Critério para promoção | Exigir o job completo verde, evidências disponíveis e revisão humana. Não há promoção automática nem produção nesta entrega. |
+Organizamos o fluxo em dez etapas. As operações automatizadas são sequenciais dentro do job `ci`; a decisão de promoção permanece humana. Cada etapa depende do sucesso da anterior. A coleta de evidências usa `if: always()` para preservar os resultados disponíveis mesmo quando uma etapa falha.
 
 ```mermaid
 flowchart TD
-  A[1. Gatilho definido] --> B[2. Checkout do commit]
+  A[1. Gatilho] --> B[2. Checkout do commit]
   B --> C[3. Validação inicial e Java 21]
-  C --> D[4. Build com saída limpa]
-  D --> E[5. Testes JUnit]
+  C --> D[4. Compilação com saída limpa]
+  D --> E[5. Testes e verificação do pacote]
   E --> F[6. Qualidade e detecção de segredos]
-  F --> G[7. JAR, manifesto e SHA-256]
+  F --> G[7. Identificação do JAR e checksum]
   G --> H[8. Publicação do artefato]
-  H --> I[9. Processo temporário e smoke HTTP]
+  H --> I[9. Deploy temporário e smoke HTTP]
   I --> J[10. Revisão humana para promoção]
-  C -. falha .-> X[Interromper etapas dependentes]
+  C -. falha .-> X[Interrupção das etapas dependentes]
   D -. falha .-> X
   E -. falha .-> X
   F -. falha .-> X
   G -. falha .-> X
   H -. falha .-> X
   I -. falha .-> X
-  X --> L[Coletar evidências disponíveis]
+  X --> L[Coleta das evidências disponíveis]
   I --> L
 ```
 
-As etapas operacionais são sequenciais dentro do job `ci`. O upload final de evidências usa uma condição de execução mesmo após falhas anteriores. A etapa 10 é uma decisão humana externa ao job. O cache contém dependências; a aplicação é reconstruída com `clean`. A publicação antecede o smoke: **artefato disponível não equivale a aprovação para promoção**.
+A compilação começa com `clean compile`, removendo as saídas anteriores. O cache armazena dependências Maven e reduz downloads, enquanto as classes da aplicação são reconstruídas. Em seguida, o ciclo `verify` executa os testes e produz o JAR base somente após sua aprovação. A opção `-DfailIfNoTests=true` impede que uma execução sem testes encontrados seja considerada bem-sucedida.
 
-## Slide 59: Atividade Prática — Detalhar Cada Etapa
+A publicação do pacote ocorre antes do smoke HTTP. Por isso, definimos que a existência de um artefato publicado não autoriza sua promoção: a aprovação depende do resultado completo do job, incluindo o smoke, e da revisão das evidências.
 
-### 1. Gatilho
+### Entradas, processamento e saídas
 
-| Campo | Resposta |
-| --- | --- |
-| Entrada | Evento `push`, `pull_request` ou solicitação manual com uma referência do repositório. |
-| Ação | GitHub Actions avalia os eventos declarados em `.github/workflows/ci.yml` e agenda o job. |
-| Saída | Execução identificada por evento, referência, commit, número e tentativa. |
-| Falha | Workflow inválido, Actions desabilitado ou indisponibilidade/limite do serviço impede iniciar o job. |
-| Evidência | Página da execução ou diagnóstico de configuração do GitHub; uma execução que não iniciou pode não gerar artefatos. |
-| Responsabilidade | Responsável por CI e administrador do repositório. |
+| Etapa | Entrada | Ação executada | Saída |
+| --- | --- | --- | --- |
+| 1. Gatilho | Evento de push, pull request ou acionamento manual. | GitHub Actions avalia o evento e agenda o job para a referência correspondente. | Execução identificada por evento, referência, commit, número e tentativa. |
+| 2. Checkout | Repositório e revisão definidos pelo evento. | O código e o histórico são obtidos; o SHA do checkout é conferido. | Workspace com a revisão efetivamente testada. |
+| 3. Validação inicial | Código obtido, `pom.xml`, Wrapper e executor Ubuntu. | Java é configurado; arquivos necessários, versões e configuração Maven são validados. | Ambiente preparado com Java 21 e Maven 3.9.15. |
+| 4. Build | Código validado, JDK e dependências. | `./mvnw --batch-mode --no-transfer-progress clean compile`. | Classes e recursos compilados em `target/`. |
+| 5. Testes | Aplicação compilada, testes e H2 em memória. | `./mvnw --batch-mode --no-transfer-progress -DfailIfNoTests=true verify`. | Relatórios Surefire dos oito testes e JAR base após aprovação. |
+| 6. Qualidade e segurança | Resultados de compilação/testes e histórico obtido. | Gitleaks 8.24.3 verifica possíveis segredos, com valores sensíveis ocultados: intervalo do push/PR ou histórico completo no disparo manual. | Resultado do scanner e relatório SARIF. |
+| 7. Artefato | JAR verificado e metadados do commit/execução. | `scripts/prepare-artifact.py` identifica o JAR e gera manifesto e checksum. | `dist/biblioteca-<SHA>.jar`, `MANIFEST.txt` e `SHA256SUMS`. |
+| 8. Publicação | Pacote identificado. | Upload do artefato `biblioteca-<SHA completo>` no GitHub Actions, com retenção de 30 dias. | Pacote associado à execução e disponível para download. |
+| 9. Deploy de teste | O mesmo JAR produzido pelo pipeline. | `scripts/smoke-test.sh` inicia a aplicação temporariamente, verifica HTTP e conteúdo em `/livros` e encerra o processo. | Confirmação de inicialização e atendimento da verificação HTTP básica. |
+| 10. Promoção | Job concluído, pacote identificado e evidências acessíveis. | Revisão humana do resultado completo e da rastreabilidade antes da seleção de uma versão. | Aprovação ou solicitação de correção; não há execução automática de produção. |
 
-### 2. Checkout
+### Falhas, evidências e responsabilidades
 
-| Campo | Resposta |
-| --- | --- |
-| Entrada | Repositório e revisão definidos pelo evento. |
-| Ação | Baixar o código e o histórico necessários para as verificações; registrar a revisão testada. |
-| Saída | Workspace com código correspondente ao SHA efetivamente obtido. |
-| Falha | Falta de acesso, referência inexistente, rede indisponível ou erro de checkout. |
-| Evidência | Log do checkout e metadados da execução. |
-| Responsabilidade | Responsável por CI; administrador do repositório quando houver problema de acesso. |
+Organizamos as responsabilidades por função no processo: manutenção do CI, autoria da alteração, testes e revisão. Falhas de infraestrutura ficam sob responsabilidade da manutenção do pipeline; defeitos de comportamento são tratados pela autoria da alteração em conjunto com a revisão da equipe.
 
-### 3. Validação inicial
+| Etapa | Condição de falha | Evidência disponível | Responsabilidade |
+| --- | --- | --- | --- |
+| 1. Gatilho | Workflow inválido, Actions desabilitado ou indisponibilidade do serviço. | Página da execução ou diagnóstico de configuração; eventos que não iniciam podem não gerar artefatos. | Manutenção do CI e administração do repositório. |
+| 2. Checkout | Falha de acesso, referência inexistente ou erro de rede. | Log do checkout e metadados da execução. | Manutenção do CI e administração do repositório. |
+| 3. Validação inicial | Arquivo necessário ausente, configuração inválida ou ferramenta indisponível. | `versions.log` e `validate.log`. | Manutenção do CI e do build. |
+| 4. Build | Erro de compilação ou de resolução de dependências. | `build.log` e código de saída do Maven. | Autoria da alteração; manutenção do CI para falhas de infraestrutura. |
+| 5. Testes | Asserção incorreta, exceção, ausência de testes ou erro de empacotamento. | `tests.log` e relatórios de `target/surefire-reports/`. | Autoria da alteração e manutenção dos testes. |
+| 6. Qualidade e segurança | Possível segredo detectado ou erro no scanner. | Log do Gitleaks e `gitleaks.sarif`, com valores sensíveis ocultados. | Autoria da alteração e revisão de segurança; manutenção do CI para erro da ferramenta. |
+| 7. Artefato | JAR ausente ou ambíguo, divergência do checkout ou erro de identificação. | Log do script, manifesto e checksum gerados. | Manutenção do build e autoria da alteração. |
+| 8. Publicação | Arquivo ausente, erro de upload ou limite do serviço. | Log de upload e registro do artefato. | Manutenção do CI e administração do repositório. |
+| 9. Deploy de teste | Aplicação não inicia no prazo, retorna erro HTTP ou conteúdo inesperado. | `application.log`, `smoke.log`, cabeçalhos HTTP e página obtida. | Autoria da alteração; manutenção do CI para falhas do executor. |
+| 10. Promoção | Etapa obrigatória reprovada, evidência insuficiente, divergência de identificação ou revisão não aprovada. | Resultado do job, metadados do pacote e registro da revisão quando realizado. | Revisão da equipe. |
 
-| Campo | Resposta |
-| --- | --- |
-| Entrada | Código obtido, `pom.xml`, Maven Wrapper e executor Ubuntu 24.04. |
-| Ação | Preparar Java Temurin 21.0.10, validar arquivos necessários e registrar versões Java/Maven. |
-| Saída | Ambiente pronto para compilar com Maven 3.9.15. |
-| Falha | Wrapper/arquivo necessário ausente, configuração inválida ou falha ao obter a ferramenta. |
-| Evidência | Logs de validação e versões. |
-| Responsabilidade | Responsável por CI e responsável pelo build. |
+O smoke aguarda até 90 segundos pela inicialização do processo e consulta `http://127.0.0.1:8080/livros`. A aprovação exige HTTP 200 e os textos `Livros` e `Novo livro`. Nesse ambiente, utilizamos H2 em memória com o console desabilitado. O processo é encerrado pelo próprio script ao finalizar a verificação.
 
-### 4. Build
+## Rastreabilidade e segurança
 
-| Campo | Resposta |
-| --- | --- |
-| Entrada | Código-fonte validado, JDK e dependências Maven. |
-| Ação | Executar `./mvnw --batch-mode --no-transfer-progress clean compile`. |
-| Saída | Classes e recursos compilados em `target/`. |
-| Falha | Erro de compilação, dependência indisponível ou falha do Maven. |
-| Evidência | Log de compilação com mensagem de erro e código de saída. |
-| Responsabilidade | Autor da alteração; responsável por CI se a causa for infraestrutura. |
+Associamos cada pacote ao SHA completo do commit testado. O manifesto reúne nome do JAR, checksum, commit, evento, URL da execução, tentativa e versões de Java e Maven. Essa identificação permite relacionar o arquivo distribuído à revisão que passou pelas verificações, inclusive quando um pull request utiliza um commit de integração diferente do último commit de sua branch.
 
-### 5. Testes
+Os logs e relatórios são reunidos no artefato `evidencias-<SHA>-<run_id>-<run_attempt>`. A coleta registra os resultados individuais das etapas em `execution.txt` e inclui os arquivos produzidos até o ponto em que a execução chegou. Uma falha nos testes, por exemplo, preserva o relatório correspondente, mas não produz um resultado do scanner que ainda não foi executado.
 
-| Campo | Resposta |
-| --- | --- |
-| Entrada | Aplicação compilada, código de testes e banco H2 efêmero. |
-| Ação | Executar `./mvnw --batch-mode --no-transfer-progress -DfailIfNoTests=true verify`. |
-| Saída | Resultado dos oito testes de integração, relatórios Surefire em texto/XML e JAR base se os testes passarem. |
-| Falha | Asserção incorreta, exceção, falha de inicialização, ausência de testes ou erro de execução/empacotamento. |
-| Evidência | Log de testes e arquivos de `target/surefire-reports/`. |
-| Responsabilidade | Autor da alteração e responsável pelos testes. |
+Adotamos retenção de 30 dias para os artefatos do Actions e preservamos cópias dos relatórios selecionados em `docs/evidencias/`. O registro detalhado das execuções está em [EVIDENCIAS.md](EVIDENCIAS.md).
 
-### 6. Verificação de qualidade e segurança
+O workflow usa `GITHUB_TOKEN` com `contents: read`, ações referenciadas por commit e checkout sem persistência de credenciais. O build e os testes não dependem de segredos externos. A verificação do Gitleaks oculta valores sensíveis para reduzir sua exposição em relatórios. A configuração atual oferece detecção básica de segredos; o resultado do scanner se refere ao conteúdo efetivamente analisado.
 
-| Campo | Resposta |
-| --- | --- |
-| Entrada | Código/histórico obtidos, configuração do detector e resultados de build/testes. |
-| Ação | Executar Gitleaks 8.24.3 com redação de valores sensíveis: intervalo do push/PR ou histórico completo no disparo manual. Usar build e testes como verificações básicas de qualidade. |
-| Saída | Resultado da detecção de segredos e relatório correspondente. |
-| Falha | Possível segredo detectado ou erro no próprio scanner. |
-| Evidência | Log e relatório do detector, com saída redigida. |
-| Responsabilidade | Autor da alteração e responsável por segurança/revisão; responsável por CI para erro da ferramenta. |
+## Riscos e medidas adotadas
 
-### 7. Artefato produzido
-
-| Campo | Resposta |
-| --- | --- |
-| Entrada | Código aprovado nas etapas anteriores e metadados do commit/execução. |
-| Ação | Executar `python3 scripts/prepare-artifact.py` para identificar o JAR já verificado e reunir manifesto de origem e checksum SHA-256. |
-| Saída | `dist/biblioteca-<SHA>.jar`, `dist/MANIFEST.txt` e `dist/SHA256SUMS`, associados ao SHA completo testado. |
-| Falha | JAR não encontrado/ambíguo, divergência de checkout ou erro ao gerar a identificação/checksum. |
-| Evidência | Log do script e arquivos de identificação produzidos. |
-| Responsabilidade | Responsável pelo build e autor da alteração. |
-
-### 8. Publicação
-
-| Campo | Resposta |
-| --- | --- |
-| Entrada | Pacote identificado e serviço de artefatos do GitHub Actions. |
-| Ação | Fazer upload do artefato `biblioteca-<SHA completo>`, com retenção de 30 dias. |
-| Saída | Artefato disponível na página da execução. |
-| Falha | Arquivo esperado ausente, erro de upload, limite do serviço ou indisponibilidade. |
-| Evidência | Log de upload e item de artefato associado à execução. |
-| Responsabilidade | Responsável por CI e administrador do repositório. |
-
-### 9. Deploy de teste
-
-| Campo | Resposta |
-| --- | --- |
-| Entrada | O JAR produzido pelo pipeline e H2 em memória. |
-| Ação | Executar `scripts/smoke-test.sh` para iniciar o JAR temporariamente em `127.0.0.1:8080`, com H2 em memória e console desabilitado; aguardar até 90 segundos, conferir HTTP 200 e os textos `Livros`/`Novo livro` em `/livros` e encerrar o processo. |
-| Saída | Confirmação de que o pacote inicia e atende à verificação HTTP básica. |
-| Falha | Aplicação não inicia no tempo previsto, responde com erro ou não apresenta o conteúdo esperado. |
-| Evidência | Log da aplicação e resultado do smoke, coletados nas evidências da execução. |
-| Responsabilidade | Autor da alteração; responsável por CI para problemas do executor. |
-
-### 10. Critério para promoção
-
-| Campo | Resposta |
-| --- | --- |
-| Entrada | Job concluído, artefato identificado, checksum e evidências acessíveis. |
-| Ação | Revisor confere sucesso de todas as etapas e rastreabilidade antes de aceitar a alteração ou selecionar uma versão. |
-| Saída | Aprovação humana ou solicitação de correção. Não dispara produção. |
-| Falha | Qualquer etapa obrigatória vermelha, evidência insuficiente, revisão pendente ou divergência de identificação impede aprovação. |
-| Evidência | Resultado da execução e registro da revisão no pull request, quando houver. |
-| Responsabilidade | Revisor da equipe/responsável pela entrega. |
-
-## Slide 60: Atividade Prática — Analisar Riscos
-
-| Risco | Consequência | Mitigação nesta entrega / evolução necessária |
+| Risco | Consequência | Tratamento na solução |
 | --- | --- | --- |
-| Testes insuficientes | Um defeito pode passar mesmo com pipeline verde. | Executar todos os testes existentes e smoke HTTP; expandir cenários de negócio e regressão conforme novos defeitos forem identificados. Não afirmar cobertura total. |
-| Dependência indisponível | Build limpo não consegue baixar uma biblioteca/ferramenta. | Fixar versões no projeto/Wrapper, usar cache de dependências e manter log de resolução; verificar o serviço e repetir após normalização. O cache não garante disponibilidade. |
-| Segredo exposto | Uso indevido de credencial divulgada em código ou log. | Projeto sem segredos externos, Gitleaks com saída redigida, revisão e uso de Actions Secrets se necessário. Revogar e substituir credenciais eventualmente expostas. |
-| Artefato com nome ambíguo | Entrega de versão diferente da testada. | Usar SHA completo no nome do artefato e manifesto com identidade da execução; validar SHA-256. |
-| Executor com permissão excessiva | Código de um PR consegue alterar repositório ou alcançar serviços. | `contents: read`, sem credenciais de produção, execução em runner hospedado e ações fixadas por commit. Revisar qualquer aumento futuro de permissão. |
-| Falha de publicação | Build passa, mas pacote/evidências não ficam disponíveis. | Upload obrigatório do pacote e coleta final de evidências; conferir resultado e disponibilidade dos downloads antes da entrega. |
-| Ambiente de teste diferente da produção | Erros de banco/configuração podem surgir fora do CI. | Usar o próprio JAR no smoke, documentar Java/H2/runner e limites do teste. Antes de uma futura produção, testar também o banco e a configuração reais. |
-| Expiração das evidências | Professor perde acesso aos arquivos da execução. | Retenção de 30 dias e download dos pacotes para a entrega antes da expiração; registrar links, SHAs e resultados em `EVIDENCIAS.md`. |
-| Falha no smoke após publicação | Pacote publicado é confundido com versão aprovada. | Condicionar a promoção ao job inteiro verde, incluindo smoke, e à revisão humana. |
+| Testes insuficientes | Um comportamento incorreto pode passar pelo CI. | Oito testes de integração e smoke do JAR exercitam comportamentos definidos; a cobertura funcional permanece limitada aos cenários implementados. |
+| Dependência indisponível | A construção não consegue obter uma ferramenta ou biblioteca. | Versões definidas no projeto/Wrapper, cache Maven e logs de resolução reduzem variação e ajudam no diagnóstico. O cache não elimina a dependência de serviços externos. |
+| Segredo exposto | Credenciais publicadas podem ser utilizadas indevidamente. | O fluxo não requer segredos externos, usa token de leitura e executa Gitleaks com valores sensíveis ocultados. |
+| Artefato com identificação ambígua | Uma versão diferente da testada pode ser selecionada. | SHA completo no nome do JAR e do pacote, manifesto da execução e checksum SHA-256. |
+| Executor com permissões excessivas | Código executado no CI pode alcançar recursos além do necessário. | Runner hospedado, permissão `contents: read`, ausência de credenciais de produção e ações fixadas por commit. |
+| Falha de publicação | O build termina, mas os arquivos não ficam disponíveis. | Upload do pacote integra o resultado obrigatório do job; a coleta de evidências ocorre mesmo após falhas anteriores. |
+| Diferenças entre ambientes | Um comportamento validado com H2 pode divergir em outra configuração. | O smoke usa o próprio JAR produzido e registra o ambiente utilizado; a validação se limita ao H2 em memória e ao executor configurado. |
+| Expiração de evidências | Os arquivos deixam de estar disponíveis no Actions. | Retenção de 30 dias, download dos artefatos e preservação de relatórios selecionados no repositório. |
+| Publicação anterior ao smoke | Um pacote disponível pode ser confundido com uma versão aprovada. | A condição de promoção depende do job inteiro aprovado, incluindo smoke e revisão humana. |
 
-**Principal risco escolhido para a apresentação:** testes insuficientes. O smoke confirma inicialização e uma resposta HTTP; ele não comprova todos os fluxos de cadastro, atualização, exclusão e validação. A mitigação combina testes disponíveis, cenário HTTP e expansão de testes orientada aos comportamentos relevantes.
+Consideramos a insuficiência de testes o principal risco residual. Os cenários existentes verificam carga inicial, relacionamentos, busca por título, paginação, cadastro após a carga inicial, ISBN único, exclusão de autores com livros e entidades inexistentes. O smoke acrescenta a inicialização do pacote e uma resposta HTTP. Esses resultados não representam cobertura integral de todos os fluxos da interface ou de todas as condições de uso.
 
-## Slide 61: Atividade Prática — Apresentação
+## Resultados observados
 
-Roteiro para apresentação em até 4 minutos:
+A execução do pipeline detectou um defeito real no cadastro de autores. A carga inicial em `data.sql` inseria IDs explícitos, enquanto os novos cadastros dependiam de IDs gerados pelo H2. O teste `cadastraAutorELivroAposCargaInicialEPersisteRelacionamento` tentou inserir um autor e encontrou colisão com a chave primária de valor `1`.
 
-| Tempo | Conteúdo |
-| --- | --- |
-| 0:00–0:30 | Apresentar Biblioteca, contexto e gatilhos: push, PR e acionamento manual. |
-| 0:30–1:20 | Mostrar diagrama e etapas, destacando checkout, build limpo e testes bloqueantes. |
-| 1:20–2:00 | Mostrar JAR identificado pelo commit, manifesto, checksum e smoke do pacote. |
-| 2:00–3:00 | Abrir evidência de sucesso e a falha real de cadastro; mostrar passo vermelho, relatório, interrupção das etapas dependentes e correção da carga inicial. |
-| 3:00–3:35 | Explicar principal risco: testes insuficientes; apresentar mitigação e limitações. |
-| 3:35–4:00 | Responder às perguntas e concluir com o resultado observável no GitHub Actions. |
+Na [execução 38650134855](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions/runs/38650134855), associada ao commit [`595a9e4c288ee9d9054b2f270ef1d7a75ebe6399`](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/commit/595a9e4c288ee9d9054b2f270ef1d7a75ebe6399), a compilação passou e os testes registraram sete aprovações e um erro. O pipeline interrompeu as etapas de segurança, identificação do pacote, publicação e smoke. A coleta e o upload das evidências foram concluídos, preservando o erro `DataIntegrityViolationException` e os estados das etapas.
 
-- **Gatilho:** evento declarado em `.github/workflows/ci.yml`.
-- **Etapas:** as dez etapas do Slide 58; revisão de promoção é humana.
-- **Artefato:** JAR executável identificado pelo SHA do commit, com manifesto e checksum.
-- **Condições de falha:** erro de validação, compilação, teste, scanner, empacotamento, upload ou smoke.
-- **Evidências geradas:** logs, relatórios Surefire, relatório do scanner, execução HTTP e metadados do artefato.
-- **Principal risco e mitigação:** testes insuficientes; executar testes existentes e smoke, ampliando cenários de negócio.
+Corrigimos a carga inicial para que o H2 gerasse os IDs dos autores e livros. Os vínculos dos livros passaram a obter `autor_id` por subconsulta ao nome do autor. Mantivemos o teste que revelou o problema como teste de regressão.
 
-**Pergunta para a turma: em qual ponto um defeito seria descoberto?** Erro de sintaxe no build; regressão coberta por teste na etapa de testes; possível segredo no scanner; falha de inicialização/HTTP no smoke. Um comportamento sem teste pode não ser descoberto.
+O commit [`7294b5e109278c74c9b65a91a63d54b5c29102a4`](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/commit/7294b5e109278c74c9b65a91a63d54b5c29102a4) produziu a [execução 38650549205](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions/runs/38650549205), na qual todas as etapas foram aprovadas. Os oito testes passaram, o Gitleaks apresentou zero achados no intervalo analisado e o smoke retornou HTTP 200 com o conteúdo esperado.
 
-**O feedback chegaria cedo o suficiente?** Para esses casos cobertos, o feedback ocorre no CI antes de uma eventual promoção. O tempo real deve ser obtido nas execuções registradas, sem estimativa apresentada como medição.
-
-## Slide 62: Trabalho 5 — Lançamento
-
-- **Tema:** Pipeline CI mínimo e reprodutível.
-- **Valor:** até 1,0 ponto.
-- **Equipes:** conforme organização definida pelo professor; integrantes informados na abertura deste documento.
-- **Entrega:** Aula 10, após a semana da Jornada Acadêmica; data a confirmar.
-- **Ferramenta escolhida:** GitHub Actions.
-- **Projeto:** Biblioteca em Java/Spring Boot.
-
-## Slide 63: T5 — Objetivo
-
-Implementar um pipeline que possa ser repetido a partir do repositório.
-
-| Requisito | Implementação definida |
-| --- | --- |
-| Ser iniciado por evento definido | Eventos `push`, `pull_request` e `workflow_dispatch`. |
-| Obter o código correto | Checkout da referência do evento; SHA registrado para rastreabilidade. |
-| Executar build | Maven Wrapper e compilação a partir de `clean`. |
-| Executar testes disponíveis | Maven/JUnit e relatórios Surefire, além de smoke HTTP do JAR. |
-| Interromper em caso de falha | Erro em etapa obrigatória impede as seguintes; coleta de evidências permanece habilitada. |
-| Produzir ou identificar um artefato | JAR, manifesto e checksum em pacote identificado pelo SHA. |
-| Manter evidências de execução | Logs do Actions e pacote de evidências com retenção de 30 dias. |
-
-A Aula 10 aprofundará configuração e ferramentas de CI, conforme o enunciado. A configuração presente deve ser validada pelas execuções registradas, independentemente dessa aula.
-
-## Slide 64: T5 — Entregáveis
-
-| Entregável | Local e comprovação |
-| --- | --- |
-| Repositório da equipe | [Rafaelcolombo23/biblioteca-ci-t5](https://github.com/Rafaelcolombo23/biblioteca-ci-t5), criado com visibilidade pública. |
-| Arquivo de definição do pipeline | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). |
-| Instruções para execução | [`README.md`](../README.md), com comandos para Linux/macOS/Windows. |
-| Gatilho, etapas e dependências | Slides 58 e 59 deste documento e workflow executável. |
-| Identificação do artefato | Nome com SHA completo, manifesto e checksum do pacote. |
-| Evidência de execução bem-sucedida | Registro de sucesso em [`EVIDENCIAS.md`](EVIDENCIAS.md), associado a URL e commit. |
-| Evidência de falha detectada | Registro do erro real de colisão de IDs após carga inicial em [`EVIDENCIAS.md`](EVIDENCIAS.md). |
-| Como reproduzir | Clonar a revisão desejada, usar JDK 21 e executar Maven Wrapper; workflow manual para reproduzir CI completo. |
-| Como investigar falhas | Abrir primeiro passo com erro, conferir SHA e ler logs/relatórios; instruções no README. |
-| Como os segredos são protegidos | Nenhuma credencial externa necessária, token mínimo, scanner redigido, revisão e uso de Actions Secrets em integrações futuras. |
-
-**Falha escolhida para evidência:** o teste `cadastraAutorELivroAposCargaInicialEPersisteRelacionamento` revelou que os IDs explícitos de `data.sql` podiam colidir com IDs gerados pelo H2 ao cadastrar um novo autor. O teste permanece como regressão. Registrar a execução anterior à correção, com o erro de chave duplicada e as etapas dependentes ignoradas, e uma execução posterior com a carga inicial corrigida. Não é necessário introduzir um defeito artificial. Os links e resultados comprovados estão em `EVIDENCIAS.md`.
-
-## Slide 65: T5 — Escopo Mínimo
-
-| Obrigatório | Atendimento previsto na configuração |
-| --- | --- |
-| Checkout | Código da revisão associada ao evento. |
-| Build | Compilação limpa e empacotamento Maven. |
-| Testes existentes | Execução de todos os testes configurados no projeto. |
-| Resultado visível | Status do job, log e resumo no GitHub Actions. |
-| Artefato identificado | JAR e pacote identificados pelo SHA do commit. |
-
-| Recomendado, quando aplicável | Decisão |
-| --- | --- |
-| Cache de dependências | Configurado para dependências Maven; não substitui build limpo. |
-| Análise estática | Não há analisador estático dedicado nesta entrega; compilação e testes são as verificações básicas de qualidade. |
-| Construção de imagem | Fora do escopo implementado; o artefato é um JAR executável. |
-| Detecção de segredos | Gitleaks, com saída redigida. |
-
-**Não é obrigatório nesta entrega:** deploy automático em produção e estratégias blue/green ou canary. O processo temporário no executor serve apenas como deploy de teste.
-
-## Slide 66: T5 — Critérios de Avaliação
-
-| Critério | Valor | Onde verificar |
+| Resultado | Execução com defeito | Execução após correção |
 | --- | --- | --- |
-| Pipeline executável e reprodutível | Não informado no enunciado | Workflow, Wrapper, versões e instruções do README. |
-| Build, testes e tratamento de falhas | Não informado no enunciado | Execução verde, execução anterior com falha real e relatórios de testes. |
-| Artefato e rastreabilidade | Não informado no enunciado | Pacote com SHA, manifesto, checksum e associação à execução. |
-| Evidências e instruções | Não informado no enunciado | README, este documento e `EVIDENCIAS.md`. |
-| Segurança básica e organização | Não informado no enunciado | Permissões do workflow, scanner, ausência de credenciais externas e estrutura do repositório. |
-| **Total** | **1,00** | Avaliação do professor. |
+| Evento | Push em `main`, tentativa 1. | Push em `main`, tentativa 1. |
+| Testes | 8 executados; 0 falhas de asserção; 1 erro; 0 ignorados. | 8 executados; 0 falhas; 0 erros; 0 ignorados. |
+| Etapas seguintes aos testes | Ignoradas após o erro. | Segurança, artefato, publicação e smoke aprovados. |
+| Evidências | Coletadas e publicadas. | Coletadas e publicadas. |
+| Intervalo em 14/10/2026, UTC | 22:48:38–22:49:18. | 22:52:29–22:53:47. |
+| Tempo entre criação e conclusão | 40 segundos. | 78 segundos. |
 
-Os pesos individuais e a nota efetivamente recebida não foram informados; não são presumidos neste documento.
+O pacote aprovado foi identificado como `biblioteca-7294b5e109278c74c9b65a91a63d54b5c29102a4`. Seu manifesto registra o checksum SHA-256 `aa5ee28295c733bb03fa601a72f63b1ab899041e6b7dc554082d1c80939ae89b` para o JAR. Também validamos a correção localmente em macOS arm64 com Microsoft OpenJDK 21.0.10: o build passou com oito testes aprovados e o JAR respondeu HTTP 200 no smoke.
 
-## Slide 67: Checklist do Trabalho 5
+A falha observada demonstrou que o fluxo detectou o defeito durante os testes, antes da publicação do pacote, e preservou informações suficientes para identificar sua causa. A execução posterior relacionou a correção ao mesmo teste de regressão e ao artefato aprovado.
 
-Revisão baseada na [execução com falha 38650134855](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions/runs/38650134855), na [execução completa com sucesso 38650549205](https://github.com/Rafaelcolombo23/biblioteca-ci-t5/actions/runs/38650549205) e na validação local da correção. Os resultados e os arquivos preservados estão em [EVIDENCIAS.md](EVIDENCIAS.md).
+## Alcance da implementação
 
-| Pergunta | Estado | Como comprovar |
-| --- | --- | --- |
-| O repositório pode ser acessado pelo professor? | Sim, repositório público | Link do repositório, documentação e relatórios preservados em `docs/evidencias/`; download de artefatos do Actions pode exigir conta autenticada. |
-| O pipeline possui um gatilho compreensível? | Verificado na definição e em execução | `on:` declara push, PR e disparo manual; execução 38650134855 iniciada por push na main. |
-| O build parte de ambiente limpo? | Verificado na execução | Runner hospedado; etapa `clean compile` concluída com sucesso. |
-| Testes são executados? | Verificado no CI e localmente | Oito testes no CI: a primeira execução detectou um erro; após a correção, oito passaram sem falhas, erros ou testes ignorados. |
-| Uma falha interrompe corretamente o fluxo? | Verificado no CI | Testes falharam; segurança, identificação do pacote, publicação e smoke ficaram ignorados. Coleta de evidências continuou. |
-| O artefato possui identificação? | Verificado | Pacote e JAR com SHA completo `7294b5e109278c74c9b65a91a63d54b5c29102a4`, manifesto e SHA-256 registrados em `EVIDENCIAS.md`. |
-| A execução pode ser associada ao commit? | Verificado para falha e sucesso | SHAs diferentes identificam o defeito e a correção; `execution.txt` e `MANIFEST.txt` vinculam execução e artefato ao commit testado. |
-| Logs e evidências estão disponíveis? | Verificado | Duas execuções com links; artefatos baixados e relatórios selecionados preservados em `docs/evidencias/`. |
-| Não existem segredos no repositório ou nos logs? | Scanner aprovado sem achados no intervalo analisado | SARIF contém zero resultados; o fluxo não precisa de credenciais externas, usa token de leitura e saída redigida. A verificação automatizada não equivale a garantia absoluta. |
-| Outra equipe conseguiria reproduzir o processo? | Instruções e execuções comprovadas | README fornece comandos com Wrapper/JDK 21; build, oito testes e smoke passaram localmente e no CI. `EVIDENCIAS.md` ensina a repetir a falha e retornar à `main`. |
+A solução automatiza a construção e a verificação da Biblioteca a partir do repositório, com interrupção em caso de erro, artefato rastreável e evidências de sucesso e de falha. O ambiente temporário confirma que o JAR inicia e atende à verificação HTTP definida.
+
+O H2 utiliza armazenamento em memória, e os dados não persistem entre execuções da aplicação. O pipeline não realiza implantação em produção, não produz imagem de contêiner e não inclui análise estática dedicada, análise de vulnerabilidades das dependências ou medição de cobertura. A promoção foi definida como uma decisão humana baseada no resultado completo do CI e nas evidências; sua aplicação a um ambiente de produção está fora do fluxo implementado.
